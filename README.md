@@ -174,4 +174,23 @@ Add a private incident comment:
 - Authentication uses `X-Samanage-Authorization: Bearer <token>`.
 - Requests use JSON endpoints such as `incidents.json`, `users.json`, `changes.json`, and `problems.json`.
 - List tools accept a `query` object and pass those fields through as query parameters.
+- `swsd_list_incidents`, `swsd_list_problems`, and `swsd_list_changes` are stricter than the other raw list tools. SolarWinds Service Desk silently ignores unsupported assignee query parameters such as `assignee_id`, so assigned-to filtering uses an explicit local `assignee` argument instead.
 - Write tools send payloads as-is. SolarWinds Service Desk often expects a top-level object named after the resource, such as `incident`, `problem`, or `change`.
+
+List incidents, problems, or changes directly assigned to a user:
+
+```json
+{
+  "query": {
+    "state": ["Assigned", "On Hold"],
+    "per_page": 100,
+    "layout": "short"
+  },
+  "assignee": {
+    "id": 3463573
+  },
+  "max_pages": 10
+}
+```
+
+When `assignee` is provided, the tool pages through SWSD results and filters exact matches against `incident.assignee.id`, `incident.assignee.name`, or `incident.assignee.email`. The response includes `meta.pages_scanned` and `meta.records_scanned`.
