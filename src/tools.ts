@@ -218,7 +218,7 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
         body: z.string().min(1).describe("Comment body."),
         user_id: idSchema.optional().describe("Optional SWSD user id to attribute the comment to, if your account/API allows it."),
         extra_comment_fields: z
-          .record(z.unknown())
+          .record(z.string(), z.unknown())
           .optional()
           .describe("Optional extra fields merged into comment. is_private is always overwritten to true."),
         query: queryParamsSchema,
