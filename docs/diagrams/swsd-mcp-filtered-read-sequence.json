@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "swsd_list_incidents: Assignee-filtered Read",
+    "output": "swsd-mcp-filtered-read-sequence.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1080, 760],
+    "views": [
+      {
+        "id": "mcp-dispatch",
+        "label": "Validate and dispatch",
+        "focus": ["mcp-host", "mcp-server", "schema", "tool-handler"],
+        "note": "The MCP SDK validates arguments before invoking the registered incident-list handler."
+      },
+      {
+        "id": "http-reliability",
+        "label": "HTTP and retry",
+        "focus": ["tool-handler", "swsd-client", "swsd-api"],
+        "note": "Each page is fetched with a 15-second attempt timeout and GET-only bounded retries."
+      },
+      {
+        "id": "local-result",
+        "label": "Filter and return",
+        "focus": ["tool-handler", "mcp-server", "mcp-host"],
+        "note": "Exact local matching returns structured data plus explicit completeness metadata."
+      }
+    ]
+  },
+  "participants": [
+    { "id": "mcp-host", "type": "external", "label": "MCP Host", "sublabel": "tool caller" },
+    { "id": "mcp-server", "type": "backend", "label": "MCP SDK Server", "sublabel": "stdio transport" },
+    { "id": "schema", "type": "security", "label": "Zod Schema", "sublabel": "incident list input" },
+    { "id": "tool-handler", "type": "backend", "label": "Tool Handler", "sublabel": "listIncidents" },
+    { "id": "swsd-client", "type": "backend", "label": "SwsdClient", "sublabel": "native fetch + retry" },
+    { "id": "swsd-api", "type": "cloud", "label": "SWSD API", "sublabel": "incidents.json" }
+  ],
+  "segments": [
+    { "from": 150, "to": 260, "label": "MCP validation and dispatch" },
+    { "from": 270, "to": 500, "label": "Paged API read with bounded GET retry" },
+    { "from": 510, "to": 650, "label": "Local filtering and MCP response" }
+  ],
+  "messages": [
+    {
+      "id": "call-tool",
+      "from": "mcp-host",
+      "to": "mcp-server",
+      "y": 170,
+      "label": "tools/call swsd_list_incidents",
+      "variant": "emphasis",
+      "note": "Arguments may include query, exact assignee fields, and max_pages."
+    },
+    {
+      "id": "validate-input",
+      "from": "mcp-server",
+      "to": "schema",
+      "y": 205,
+      "label": "validate arguments",
+      "variant": "security"
+    },
+    {
+      "id": "valid-input",
+      "from": "schema",
+      "to": "mcp-server",
+      "y": 240,
+      "label": "validated input",
+      "variant": "return"
+    },
+    {
+      "id": "invoke-handler",
+      "from": "mcp-server",
+      "to": "tool-handler",
+      "y": 285,
+      "label": "invoke listIncidents"
+    },
+    {
+      "id": "get-page",
+      "from": "tool-handler",
+      "to": "swsd-client",
+      "y": 325,
+      "label": "GET incidents.json?page=n&per_page=p",
+      "variant": "emphasis"
+    },
+    {
+      "id": "authenticated-fetch",
+      "from": "swsd-client",
+      "to": "swsd-api",
+      "y": 365,
+      "label": "HTTPS GET + Bearer header"
+    },
+    {
+      "id": "transient-response",
+      "from": "swsd-api",
+      "to": "swsd-client",
+      "y": 405,
+      "label": "optional 408/429/5xx or network failure",
+      "variant": "dashed",
+      "note": "Only GET is retried, at most twice; Retry-After above five seconds surfaces immediately."
+    },
+    {
+      "id": "retry-get",
+      "from": "swsd-client",
+      "to": "swsd-api",
+      "y": 445,
+      "label": "conditional retry after bounded delay",
+      "variant": "dashed"
+    },
+    {
+      "id": "page-json",
+      "from": "swsd-api",
+      "to": "swsd-client",
+      "y": 485,
+      "label": "200 JSON page",
+      "variant": "return"
+    },
+    {
+      "id": "page-data",
+      "from": "swsd-client",
+      "to": "tool-handler",
+      "y": 525,
+      "label": "parsed records",
+      "variant": "return"
+    },
+    {
+      "id": "tool-result",
+      "from": "tool-handler",
+      "to": "mcp-server",
+      "y": 585,
+      "label": "exact matches + structuredContent + completeness meta",
+      "variant": "return"
+    },
+    {
+      "id": "mcp-response",
+      "from": "mcp-server",
+      "to": "mcp-host",
+      "y": 625,
+      "label": "tools/call result",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    { "participant": "mcp-server", "from": 165, "to": 630, "type": "backend" },
+    { "participant": "tool-handler", "from": 280, "to": 590, "type": "backend" },
+    { "participant": "swsd-client", "from": 320, "to": 530, "type": "backend" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Read path",
+      "items": [
+        "Assignee filtering scans pages locally because SWSD ignores raw assignee parameters",
+        "The default scan cap is 20 pages per requested incident state"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Retry boundary",
+      "items": [
+        "GET retries transient failures twice with 500ms then 1000ms fallback delays",
+        "POST and PUT never enter this retry path"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Truthful result",
+      "items": [
+        "A capped full page returns complete=false and truncated=true",
+        "Tool errors become MCP isError responses instead of terminating the server"
+      ]
+    }
+  ]
+}

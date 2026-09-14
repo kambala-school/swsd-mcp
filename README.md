@@ -4,6 +4,13 @@ Local stdio MCP server for the SolarWinds Service Desk API.
 
 This server is intentionally API-shaped. Tool names use the `swsd_` prefix. Write tools validate the resource wrapper and common fields, then pass payloads through to SolarWinds Service Desk JSON endpoints.
 
+## Diagrams
+
+Interactive architecture and sequence diagrams (open the HTML files in a browser):
+
+- [Architecture](docs/diagrams/swsd-mcp-architecture.html) — MCP server layout and how tools talk to SolarWinds Service Desk
+- [Filtered read sequence](docs/diagrams/swsd-mcp-filtered-read-sequence.html) — assignee/state local filtering and pagination flow
+
 ## Tools
 
 - `swsd_list_incidents`

@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "swsd-mcp Architecture",
+    "output": "swsd-mcp-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1240, 700],
+    "repository": {
+      "url": "https://github.com/kambala-school/swsd-mcp",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "1e70dfe421c1ddfb185fc5cfb3540ffdf6f44ec1"
+    },
+    "views": [
+      {
+        "id": "request-path",
+        "label": "MCP request path",
+        "focus": ["mcp-host", "stdio-server", "tool-layer", "local-filter", "swsd-client", "swsd-api"],
+        "note": "Follow a tool call from the local MCP host to the SolarWinds Service Desk JSON API."
+      },
+      {
+        "id": "validation-policy",
+        "label": "Validation and policy",
+        "focus": ["environment", "schema-layer", "tool-layer", "local-filter", "swsd-client"],
+        "note": "See where configuration, input validation, private-comment enforcement, pagination, and retry policy live."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "mcp-host",
+      "type": "external",
+      "label": "MCP Host",
+      "sublabel": "Codex, Claude Code, Cursor",
+      "pos": [40, 315],
+      "size": [160, 72]
+    },
+    {
+      "id": "stdio-server",
+      "type": "backend",
+      "label": "MCP SDK Server",
+      "sublabel": "McpServer + stdio transport",
+      "pos": [260, 315],
+      "size": [180, 72],
+      "sources": [
+        { "path": "src/index.ts", "line": 2, "end_line": 18, "label": "server entrypoint" }
+      ]
+    },
+    {
+      "id": "schema-layer",
+      "type": "security",
+      "label": "Zod Input Schemas",
+      "sublabel": "IDs, queries, write wrappers",
+      "pos": [500, 110],
+      "size": [190, 72],
+      "sources": [
+        { "path": "src/schemas.ts", "line": 1, "label": "validation contracts" }
+      ]
+    },
+    {
+      "id": "tool-layer",
+      "type": "backend",
+      "label": "22 MCP Tool Handlers",
+      "sublabel": "read, create, update, comments",
+      "pos": [500, 315],
+      "size": [190, 72],
+      "sources": [
+        { "path": "src/tools.ts", "line": 41, "end_line": 226, "label": "tool registration" }
+      ]
+    },
+    {
+      "id": "local-filter",
+      "type": "backend",
+      "label": "Local Scan + Filter",
+      "sublabel": "assignee/state + completeness",
+      "tag": "max 20 pages by default",
+      "pos": [500, 520],
+      "size": [190, 76],
+      "sources": [
+        { "path": "src/tools.ts", "line": 248, "end_line": 392, "label": "bounded pagination" }
+      ]
+    },
+    {
+      "id": "swsd-client",
+      "type": "backend",
+      "label": "SwsdClient",
+      "sublabel": "URL, auth, timeout, GET retry",
+      "tag": "native fetch",
+      "pos": [760, 315],
+      "size": [190, 76],
+      "sources": [
+        { "path": "src/client.ts", "line": 27, "end_line": 122, "label": "HTTP client" }
+      ]
+    },
+    {
+      "id": "environment",
+      "type": "security",
+      "label": "Environment",
+      "sublabel": "token, base URL, Accept header",
+      "pos": [760, 110],
+      "size": [190, 72],
+      "sources": [
+        { "path": ".env.example", "line": 1, "end_line": 2, "label": "configuration shape" }
+      ]
+    },
+    {
+      "id": "swsd-api",
+      "type": "cloud",
+      "label": "SolarWinds Service Desk",
+      "sublabel": "JSON API endpoints",
+      "tag": "api.samanage.com",
+      "pos": [1020, 315],
+      "size": [180, 76]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Local Node.js process",
+      "wraps": ["stdio-server", "schema-layer", "tool-layer", "local-filter", "swsd-client", "environment"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "id": "host-stdio",
+      "from": "mcp-host",
+      "to": "stdio-server",
+      "label": "MCP over stdin/stdout",
+      "variant": "emphasis",
+      "labelAt": [230, 311]
+    },
+    {
+      "id": "stdio-tools",
+      "from": "stdio-server",
+      "to": "tool-layer",
+      "label": "dispatch tools/call",
+      "labelAt": [470, 401]
+    },
+    {
+      "id": "schemas-tools",
+      "from": "schema-layer",
+      "to": "tool-layer",
+      "label": "validate arguments",
+      "variant": "security",
+      "labelAt": [595, 196]
+    },
+    {
+      "id": "tools-filter",
+      "from": "tool-layer",
+      "to": "local-filter",
+      "label": "scan when assignee/state requires it",
+      "labelAt": [595, 401]
+    },
+    {
+      "id": "tools-client",
+      "from": "tool-layer",
+      "to": "swsd-client",
+      "label": "GET, POST, or PUT",
+      "labelAt": [725, 311]
+    },
+    {
+      "id": "filter-client",
+      "from": "local-filter",
+      "to": "swsd-client",
+      "label": "paged GET requests"
+    },
+    {
+      "id": "environment-client",
+      "from": "environment",
+      "to": "swsd-client",
+      "label": "Bearer token + endpoint",
+      "variant": "security",
+      "labelAt": [855, 196]
+    },
+    {
+      "id": "client-api",
+      "from": "swsd-client",
+      "to": "swsd-api",
+      "label": "HTTPS JSON + X-Samanage-Authorization",
+      "variant": "emphasis",
+      "labelAt": [985, 405]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Transport",
+      "items": [
+        "Local stdio MCP server; no inbound HTTP listener",
+        "MCP SDK owns protocol framing and tool dispatch"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Tool behavior",
+      "items": [
+        "22 API-shaped tools cover seven resources and incident comments",
+        "Incident, problem, and change scans expose complete/truncated metadata"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Safety + reliability",
+      "items": [
+        "Private comment creation forces is_private=true",
+        "GET retries are bounded; POST and PUT are never retried"
+      ]
+    }
+  ]
+}
