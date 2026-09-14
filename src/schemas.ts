@@ -21,7 +21,7 @@ export const incidentListInputSchema = {
     .object({
       page: z.number().int().positive().optional().describe("Page number. Used directly when no local assignee filter is provided."),
       per_page: z.number().int().positive().max(100).optional().describe("Results per page. Defaults to 100 when local assignee filtering is used."),
-      layout: z.enum(["short", "long"]).optional().describe("SWSD response layout. Defaults to short."),
+      layout: z.enum(["short", "long"]).optional().describe("SWSD response layout. Omit to use the API default."),
       state: z
         .union([z.string(), z.array(z.string()).min(1)])
         .optional()
@@ -53,7 +53,7 @@ export const incidentListInputSchema = {
     .positive()
     .max(50)
     .optional()
-    .describe("Maximum pages to scan when assignee filtering is used. Defaults to 20."),
+    .describe("Maximum pages to scan per state when assignee filtering is used. Defaults to 20. A full final page sets meta.truncated=true and meta.complete=false."),
 };
 
 export const workItemListInputSchema = {
@@ -61,7 +61,7 @@ export const workItemListInputSchema = {
     .object({
       page: z.number().int().positive().optional().describe("Page number. Used directly when no local filter is provided."),
       per_page: z.number().int().positive().max(100).optional().describe("Results per page. Defaults to 100 when local filtering is used."),
-      layout: z.enum(["short", "long"]).optional().describe("SWSD response layout. Defaults to short."),
+      layout: z.enum(["short", "long"]).optional().describe("SWSD response layout. Omit to use the API default."),
       state: z
         .union([z.string(), z.array(z.string()).min(1)])
         .optional()
@@ -88,12 +88,8 @@ export const workItemListInputSchema = {
     .positive()
     .max(50)
     .optional()
-    .describe("Maximum pages to scan when local filtering is used. Defaults to 20."),
+    .describe("Maximum pages to scan when local filtering is used. Defaults to 20. A full final page sets meta.truncated=true and meta.complete=false."),
 };
-
-export const rawPayloadSchema = z
-  .record(z.unknown())
-  .describe("Raw SolarWinds Service Desk JSON payload. Include the top-level resource key when the API requires it.");
 
 export const listInputSchema = {
   query: queryParamsSchema,
@@ -103,13 +99,18 @@ export const getInputSchema = {
   id: idSchema.describe("SolarWinds Service Desk resource id or number."),
 };
 
-export const writeInputSchema = {
-  payload: rawPayloadSchema,
-  query: queryParamsSchema,
-};
-
-export const updateInputSchema = {
-  id: idSchema.describe("SolarWinds Service Desk resource id or number."),
-  payload: rawPayloadSchema,
-  query: queryParamsSchema,
-};
+export function writeInputSchema(resource: string) {
+  return {
+    payload: z.object({
+      [resource]: z.object({
+        name: z.string().min(1).optional().describe("Resource title, for example 'Printer is offline'."),
+        description: z.string().optional().describe("Resource description."),
+        priority: z.string().min(1).optional().describe("Priority accepted by your SWSD account, for example 'Medium'."),
+        state: z.string().min(1).optional().describe("State accepted by your SWSD account. Updates may trigger workflow actions."),
+      }).passthrough().refine((value) => Object.values(value).some((field) => field !== undefined), {
+        message: "Provide at least one resource field.",
+      }).describe(`Fields for the ${resource}. Additional SWSD fields, including custom fields, are passed through unchanged.`),
+    }).strict().describe(`Required wrapper, for example {"${resource}": {"name": "Printer is offline"}}. SWSD validates account-specific required fields.`),
+    query: queryParamsSchema,
+  };
+}

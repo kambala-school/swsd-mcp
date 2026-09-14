@@ -2,7 +2,7 @@
 
 Local stdio MCP server for the SolarWinds Service Desk API.
 
-This server is intentionally raw/API-shaped. Tool names use the `swsd_` prefix and payloads are passed through to SolarWinds Service Desk JSON endpoints.
+This server is intentionally API-shaped. Tool names use the `swsd_` prefix. Write tools validate the resource wrapper and common fields, then pass payloads through to SolarWinds Service Desk JSON endpoints.
 
 ## Tools
 
@@ -80,6 +80,12 @@ node dist/index.js
 The server speaks MCP over stdio. It does not run an HTTP server.
 
 ## Smoke Test
+
+Run the automated checks (mocked HTTP and in-memory MCP; no credentials or live API calls):
+
+```sh
+npm test
+```
 
 Build first:
 
@@ -175,7 +181,9 @@ Add a private incident comment:
 - Requests use JSON endpoints such as `incidents.json`, `users.json`, `changes.json`, and `problems.json`.
 - List tools accept a `query` object and pass those fields through as query parameters.
 - `swsd_list_incidents`, `swsd_list_problems`, and `swsd_list_changes` are stricter than the other raw list tools. SolarWinds Service Desk silently ignores unsupported assignee query parameters such as `assignee_id`, so assigned-to filtering uses an explicit local `assignee` argument instead.
-- Write tools send payloads as-is. SolarWinds Service Desk often expects a top-level object named after the resource, such as `incident`, `problem`, or `change`.
+- Create/update tools require a top-level object named after the resource: `incident`, `problem`, or `change`. Empty resource objects and unexpected top-level keys are rejected. Common fields (`name`, `description`, `priority`, `state`) are typed strings; other fields inside the resource, including custom fields, pass through unchanged. SWSD still validates account-specific fields and required values.
+- This tightens the previous raw payload contract: existing correctly wrapped payloads remain supported; unwrapped or empty payloads must be corrected.
+- Update tools advertise potentially destructive, non-idempotent behaviour because fields can be overwritten and workflows may have side effects. These annotations describe risk; authorization remains the client's responsibility.
 
 List incidents, problems, or changes directly assigned to a user:
 
@@ -193,4 +201,15 @@ List incidents, problems, or changes directly assigned to a user:
 }
 ```
 
-When `assignee` is provided, the tool pages through SWSD results and filters exact matches against `incident.assignee.id`, `incident.assignee.name`, or `incident.assignee.email`. The response includes `meta.pages_scanned` and `meta.records_scanned`.
+When `assignee` is provided, the tool pages through SWSD results and filters exact matches against the resource's `assignee.id`, `assignee.name`, or `assignee.email`. Problems and changes also scan locally when a state filter is supplied. Local scans start at page 1; `query.page` applies only when no local filtering is used.
+
+Local scan responses include `meta.pages_scanned`, `meta.records_scanned`, `meta.complete`, and `meta.truncated`. A full final page at the scan limit means `complete: false`, `truncated: true`, and an explicit warning—even if no matching records were found. This conservatively means more records may exist, not that omitted matches are known to exist. `complete: true` means the scan reached a short or empty page for each requested state; it does not guarantee a snapshot if records change during pagination.
+
+The default scan limit is 20 pages, configurable up to 50 with `max_pages`. For incidents, that limit applies separately to each requested state. Narrow the query or increase the limit before drawing exhaustive conclusions from a capped scan. Unfiltered lists return one page; incident lists with multiple states and no assignee return one page per state.
+
+## Request Reliability
+
+- Each HTTP attempt has a 15-second timeout covering both headers and response body. Code using `SwsdClient` directly can override it with a positive integer `timeoutMs` option.
+- GET requests retry at most twice after network errors, timeouts, or HTTP 408, 429, 500, 502, 503, and 504. Other HTTP errors fail immediately.
+- Retries use 500ms then 1000ms backoff unless `Retry-After` specifies seconds or an HTTP date. Delays exceeding five seconds surface the API error, including `Retry-After`, instead of retrying early or keeping a tool call waiting indefinitely.
+- POST and PUT requests are never automatically retried. A write timeout explicitly warns that the operation may already have succeeded. Verify the record before repeating any write after a timeout or lost connection.

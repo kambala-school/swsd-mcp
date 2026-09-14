@@ -8,7 +8,6 @@ import {
   incidentListInputSchema,
   listInputSchema,
   queryParamsSchema,
-  updateInputSchema,
   workItemListInputSchema,
   writeInputSchema,
 } from "./schemas.js";
@@ -106,7 +105,7 @@ function registerIncidentListTool(server: McpServer, client: SwsdClient): void {
     {
       title: "List Incidents",
       description:
-        "List SolarWinds Service Desk incidents. For assigned-to queries, use the explicit assignee filter; SWSD silently ignores raw assignee_id/assignee query parameters.",
+        "List SolarWinds Service Desk incidents. For assigned-to queries, use the explicit assignee filter; SWSD silently ignores raw assignee_id/assignee query parameters. Local scans report meta.complete and meta.truncated; never treat incomplete results as exhaustive. Without assignee, returns one page per state.",
       inputSchema: incidentListInputSchema,
       annotations: {
         readOnlyHint: true,
@@ -132,7 +131,7 @@ function registerWorkItemListTool(server: McpServer, client: SwsdClient, resourc
     {
       title: `List ${resource.pluralTitle}`,
       description:
-        `List SolarWinds Service Desk ${resource.plural}. For assigned-to queries, use the explicit assignee filter; SWSD silently ignores raw assignee_id/assignee query parameters.`,
+        `List SolarWinds Service Desk ${resource.plural}. For assigned-to queries, use the explicit assignee filter; SWSD silently ignores raw assignee_id/assignee query parameters. Local scans report meta.complete and meta.truncated; never treat incomplete results as exhaustive. Without filters, returns one page.`,
       inputSchema: workItemListInputSchema,
       annotations: {
         readOnlyHint: true,
@@ -157,8 +156,8 @@ function registerWriteTools(server: McpServer, client: SwsdClient, resource: Res
     `swsd_create_${resource.singular}`,
     {
       title: `Create ${resource.title}`,
-      description: `Create a SolarWinds Service Desk ${resource.singular}. The payload is sent as-is, so include the top-level '${resource.singular}' object when required by SWSD.`,
-      inputSchema: writeInputSchema,
+      description: `Create a SolarWinds Service Desk ${resource.singular}. Include the required top-level '${resource.singular}' object in payload. Additional SWSD fields are passed through. Writes are never automatically retried.`,
+      inputSchema: writeInputSchema(resource.singular),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -174,12 +173,12 @@ function registerWriteTools(server: McpServer, client: SwsdClient, resource: Res
     `swsd_update_${resource.singular}`,
     {
       title: `Update ${resource.title}`,
-      description: `Update a SolarWinds Service Desk ${resource.singular}. The payload is sent as-is, so include the top-level '${resource.singular}' object when required by SWSD.`,
-      inputSchema: updateInputSchema,
+      description: `Update a SolarWinds Service Desk ${resource.singular}. Include the required top-level '${resource.singular}' object in payload. Supplied fields may overwrite existing values or trigger workflows. Writes are never automatically retried.`,
+      inputSchema: { id: idSchema, ...writeInputSchema(resource.singular) },
       annotations: {
         readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: true,
+        destructiveHint: true,
+        idempotentHint: false,
         openWorldHint: true,
       },
     },
@@ -314,6 +313,7 @@ async function listIncidents(
   const matched: unknown[] = [];
   let scanned = 0;
   let pagesScanned = 0;
+  let truncated = false;
 
   for (const state of stateList) {
     for (let page = 1; page <= scanLimit; page += 1) {
@@ -325,6 +325,9 @@ async function listIncidents(
 
       if (incidents.length < pageSize) {
         break;
+      }
+      if (page === scanLimit) {
+        truncated = true;
       }
     }
   }
@@ -338,6 +341,9 @@ async function listIncidents(
       pages_scanned: pagesScanned,
       records_scanned: scanned,
       max_pages: scanLimit,
+      complete: !truncated,
+      truncated,
+      ...(truncated ? { warning: "Scan limit reached; results may be incomplete. Narrow the query or increase max_pages before drawing exhaustive conclusions." } : {}),
       per_page: pageSize,
       note: "SWSD ignores raw assignee_id/assignee query parameters for incidents, so this tool filters exact assignee matches from paged API results.",
     },
@@ -372,6 +378,7 @@ async function listWorkItems(
   const matched: unknown[] = [];
   let scanned = 0;
   let pagesScanned = 0;
+  let truncated = false;
 
   for (let page = 1; page <= scanLimit; page += 1) {
     const serverQuery = buildWorkItemServerQuery(query, page, pageSize);
@@ -382,6 +389,9 @@ async function listWorkItems(
 
     if (items.length < pageSize) {
       break;
+    }
+    if (page === scanLimit) {
+      truncated = true;
     }
   }
 
@@ -395,6 +405,9 @@ async function listWorkItems(
       pages_scanned: pagesScanned,
       records_scanned: scanned,
       max_pages: scanLimit,
+      complete: !truncated,
+      truncated,
+      ...(truncated ? { warning: "Scan limit reached; results may be incomplete. Narrow the query or increase max_pages before drawing exhaustive conclusions." } : {}),
       per_page: pageSize,
       note: "SWSD ignores raw assignee_id/assignee query parameters for this endpoint, so this tool filters exact matches from paged API results.",
     },
