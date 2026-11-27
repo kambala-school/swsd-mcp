@@ -43,6 +43,7 @@ const resources: ResourceConfig[] = [
 ];
 
 const writeResources = new Set(["incident", "problem", "change"]);
+const commentResources = new Set(["incident", "change"]);
 
 export function registerTools(server: McpServer, client: SwsdClient): void {
   for (const resource of resources) {
@@ -61,7 +62,9 @@ export function registerTools(server: McpServer, client: SwsdClient): void {
     }
   }
 
-  registerIncidentCommentTools(server, client);
+  for (const resource of resources.filter((r) => commentResources.has(r.singular))) {
+    registerCommentTools(server, client, resource);
+  }
 }
 
 function registerReadTools(server: McpServer, client: SwsdClient, resource: ResourceConfig): void {
@@ -196,15 +199,17 @@ function registerWriteTools(server: McpServer, client: SwsdClient, resource: Res
   );
 }
 
-function registerIncidentCommentTools(server: McpServer, client: SwsdClient): void {
+function registerCommentTools(server: McpServer, client: SwsdClient, resource: ResourceConfig): void {
+  const { singular, path, title } = resource;
+  const idKey = `${singular}_id`;
+  const idField = { [idKey]: idSchema.describe(`${title} id or number.`) };
   server.registerTool(
-    "swsd_list_incident_comments",
+    `swsd_list_${singular}_comments`,
     {
-      title: "List Incident Comments",
-      description:
-        "List comments for a SolarWinds Service Desk incident. Results are paged; check meta.pagination.has_more and request the next page before treating the thread as complete.",
+      title: `List ${title} Comments`,
+      description: `List comments for a SolarWinds Service Desk ${singular}. Results are paged; check meta.pagination.has_more and request the next page before treating the thread as complete.`,
       inputSchema: {
-        incident_id: idSchema.describe("Incident id or number."),
+        ...idField,
         query: queryParamsSchema,
       },
       annotations: {
@@ -214,21 +219,22 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
         openWorldHint: true,
       },
     },
-    async ({ incident_id, query }) =>
+    async (args) =>
       withToolError(async () => {
-        const { items, pagination } = await client.getPage(`incidents/${incident_id}/comments.json`, query);
+        const { query } = args;
+        const id = (args as Record<string, unknown>)[idKey] as string | number;
+        const { items, pagination } = await client.getPage(`${path}/${id}/comments.json`, query);
         return { comments: items, meta: { pagination } };
       }, "comments"),
   );
 
   server.registerTool(
-    "swsd_create_private_incident_comment",
+    `swsd_create_private_${singular}_comment`,
     {
-      title: "Create Private Incident Comment",
-      description:
-        "Create an incident comment that is always private and hidden from the requester/end user. The tool forces comment.is_private to true.",
+      title: `Create Private ${title} Comment`,
+      description: `Create a ${singular} comment that is always private and hidden from the requester/end user. The tool forces comment.is_private to true.`,
       inputSchema: {
-        incident_id: idSchema.describe("Incident id or number."),
+        ...idField,
         body: z.string().min(1).describe("Comment body."),
         user_id: idSchema
           .optional()
@@ -246,7 +252,9 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
         openWorldHint: true,
       },
     },
-    async ({ incident_id, body, user_id, extra_comment_fields, query }) => {
+    async (args) => {
+      const { body, user_id, extra_comment_fields, query } = args;
+      const id = (args as Record<string, unknown>)[idKey] as string | number;
       const comment = {
         ...(extra_comment_fields ?? {}),
         body,
@@ -254,7 +262,41 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
         is_private: true,
       };
 
-      return withToolError(() => client.post(`incidents/${incident_id}/comments.json`, { comment }, query), "comment");
+      return withToolError(() => client.post(`${path}/${id}/comments.json`, { comment }, query), "comment");
+    },
+  );
+
+  server.registerTool(
+    `swsd_update_private_${singular}_comment`,
+    {
+      title: `Update Private ${title} Comment`,
+      description: `Update an existing ${singular} comment. The comment is always kept private and hidden from the requester/end user: the tool forces comment.is_private to true. Writes are never automatically retried.`,
+      inputSchema: {
+        ...idField,
+        comment_id: idSchema.describe("Comment id, from the list comments tool."),
+        body: z.string().min(1).describe("New comment body; replaces the existing body."),
+        extra_comment_fields: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Optional extra fields merged into comment. is_private is always overwritten to true."),
+        query: queryParamsSchema,
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args) => {
+      const { comment_id, body, extra_comment_fields, query } = args;
+      const id = (args as Record<string, unknown>)[idKey] as string | number;
+      const comment = { ...(extra_comment_fields ?? {}), body, is_private: true };
+
+      return withToolError(
+        () => client.put(`${path}/${id}/comments/${comment_id}.json`, { comment }, query),
+        "comment",
+      );
     },
   );
 }
