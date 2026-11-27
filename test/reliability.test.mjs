@@ -94,6 +94,10 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   const server = new McpServer({ name: "test-swsd", version: "1" });
   registerTools(server, {
     get: (...args) => get(...args),
+    getPage: async (path, query) => ({
+      items: await get(path, query),
+      pagination: { page: query?.page ?? 1, has_more: null },
+    }),
     post: async (path, body) => {
       writes.push({ path, body });
       return body;
@@ -234,4 +238,41 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   }
   assert.equal(writes.length, before);
   assert.notEqual((await client.callTool({ name: "swsd_get_incident", arguments: { id: "123" } })).isError, true);
+
+  // Comments and plain lists accept paging and report pagination meta.
+  let seen;
+  get = async (path, query) => {
+    seen = { path, query };
+    return [{ id: 7 }];
+  };
+  const comments = await client.callTool({
+    name: "swsd_list_incident_comments",
+    arguments: { incident_id: 1, query: { page: 2 } },
+  });
+  assert.deepEqual(seen, { path: "incidents/1/comments.json", query: { page: 2 } });
+  assert.deepEqual(comments.structuredContent.comments, [{ id: 7 }]);
+  assert.equal(comments.structuredContent.meta.pagination.page, 2);
+  const users = await client.callTool({ name: "swsd_list_users", arguments: {} });
+  assert.deepEqual(users.structuredContent.users, [{ id: 7 }]);
+  assert.ok("pagination" in users.structuredContent.meta);
+});
+
+test("getPage reads SWSD pagination headers and reports unknown when they are missing", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () =>
+    Response.json([{ id: 1 }], {
+      headers: { "X-Total-Count": "250", "X-Total-Pages": "3", "X-Current-Page": "2" },
+    }),
+  );
+  assert.deepEqual(await api().getPage("incidents.json", { page: 2 }), {
+    items: [{ id: 1 }],
+    pagination: { page: 2, total_count: 250, total_pages: 3, has_more: true },
+  });
+  fetch.mock.restore();
+  t.mock.method(globalThis, "fetch", async () => Response.json([]));
+  assert.deepEqual((await api().getPage("incidents.json")).pagination, {
+    page: 1,
+    total_count: null,
+    total_pages: null,
+    has_more: null,
+  });
 });

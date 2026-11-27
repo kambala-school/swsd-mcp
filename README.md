@@ -210,6 +210,9 @@ List incidents, problems, or changes directly assigned to a user:
 
 When `assignee` is provided, the tool pages through SWSD results and filters exact matches against the resource's `assignee.id`, `assignee.name`, or `assignee.email`. Problems and changes also scan locally when a state filter is supplied. Local scans start at page 1; `query.page` applies only when no local filtering is used.
 
+Single-page list responses (plain lists, incident comments, and unfiltered incident/problem/change lists) include `meta.pagination` with `page`, `total_count`, `total_pages` and `has_more`,
+read from SWSD's `X-Total-Count` / `X-Total-Pages` headers. `has_more: null` means the API sent no paging headers, so completeness is unknown.
+
 Local scan responses include `meta.pages_scanned`, `meta.records_scanned`, `meta.complete`, and `meta.truncated`. A full final page at the scan limit means `complete: false`, `truncated: true`, and an explicit warning—even if no matching records were found.
 This conservatively means more records may exist, not that omitted matches are known to exist. `complete: true` means the scan reached a short or empty page for each requested state; it does not guarantee a snapshot if records change during pagination.
 
