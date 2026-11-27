@@ -35,7 +35,8 @@ export class SwsdClient {
       options.baseUrl ?? process.env.SOLARWINDS_SERVICE_DESK_BASE_URL ?? "https://api.samanage.com",
     );
     this.token = options.token ?? process.env.SOLARWINDS_SERVICE_DESK_TOKEN ?? "";
-    this.acceptHeader = options.acceptHeader ?? process.env.SOLARWINDS_SERVICE_DESK_ACCEPT ?? "application/vnd.samanage.v2.1+json";
+    this.acceptHeader =
+      options.acceptHeader ?? process.env.SOLARWINDS_SERVICE_DESK_ACCEPT ?? "application/vnd.samanage.v2.1+json";
     this.timeoutMs = options.timeoutMs ?? 15_000;
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs <= 0 || this.timeoutMs > 2_147_483_647) {
       throw new Error("timeoutMs must be a positive integer no greater than 2147483647.");
@@ -61,7 +62,7 @@ export class SwsdClient {
         response = await fetch(url, {
           method,
           headers: {
-            "Accept": this.acceptHeader,
+            Accept: this.acceptHeader,
             "Content-Type": "application/json",
             "X-Samanage-Authorization": `Bearer ${this.token}`,
           },
@@ -71,8 +72,7 @@ export class SwsdClient {
 
         const responseBody = await parseResponseBody(response);
         if (!response.ok) {
-          const renderedBody =
-            typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody, null, 2);
+          const renderedBody = typeof responseBody === "string" ? responseBody : JSON.stringify(responseBody, null, 2);
           throw new SwsdApiError(
             `SolarWinds Service Desk API ${method} ${url} failed with HTTP ${response.status}${response.headers.has("retry-after") ? ` (Retry-After: ${response.headers.get("retry-after")})` : ""}: ${renderedBody}`,
             response.status,
@@ -84,18 +84,25 @@ export class SwsdClient {
 
         return responseBody as T;
       } catch (error) {
-        const retryable = error instanceof SwsdApiError
-          ? [408, 429, 500, 502, 503, 504].includes(error.status)
-          : error instanceof TypeError || signal.aborted;
+        const retryable =
+          error instanceof SwsdApiError
+            ? [408, 429, 500, 502, 503, 504].includes(error.status)
+            : error instanceof TypeError || signal.aborted;
         const retryAfter = response?.headers.get("retry-after");
-        const retryMs = retryAfter == null ? NaN : /^\d+$/.test(retryAfter)
-          ? Number(retryAfter) * 1000
-          : Date.parse(retryAfter) - Date.now();
+        const retryMs =
+          retryAfter == null
+            ? NaN
+            : /^\d+$/.test(retryAfter)
+              ? Number(retryAfter) * 1000
+              : Date.parse(retryAfter) - Date.now();
         const waitMs = Number.isNaN(retryMs) ? 500 * 2 ** attempt : Math.max(0, retryMs);
         // ponytail: long Retry-After delays surface to the caller; queue jobs if longer waits are needed.
         if (method !== "GET" || !retryable || attempt >= 2 || waitMs > 5000) {
           if (signal.aborted) {
-            throw new Error(`SolarWinds Service Desk API ${method} timed out after ${this.timeoutMs}ms.${method === "GET" ? "" : " The write may have succeeded; verify the record before retrying."}`, { cause: error });
+            throw new Error(
+              `SolarWinds Service Desk API ${method} timed out after ${this.timeoutMs}ms.${method === "GET" ? "" : " The write may have succeeded; verify the record before retrying."}`,
+              { cause: error },
+            );
           }
           throw error;
         }

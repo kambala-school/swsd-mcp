@@ -20,10 +20,21 @@ test("GET retries rate limits and transient failures, then returns the response"
 });
 
 test("GET retries are bounded; permanent errors and long Retry-After delays surface immediately", async (t) => {
-  for (const [status, retryAfter, attempts] of [[503, "0", 3], [401, "0", 1], [429, "60", 1], [429, new Date(Date.now() + 60_000).toUTCString(), 1]]) {
-    const fetch = t.mock.method(globalThis, "fetch", async () => new Response("failed", {
-      status, headers: { "Retry-After": retryAfter },
-    }));
+  for (const [status, retryAfter, attempts] of [
+    [503, "0", 3],
+    [401, "0", 1],
+    [429, "60", 1],
+    [429, new Date(Date.now() + 60_000).toUTCString(), 1],
+  ]) {
+    const fetch = t.mock.method(
+      globalThis,
+      "fetch",
+      async () =>
+        new Response("failed", {
+          status,
+          headers: { "Retry-After": retryAfter },
+        }),
+    );
     await assert.rejects(api().get("incidents.json"), (error) => {
       assert.ok(error instanceof SwsdApiError);
       assert.equal(error.status, status);
@@ -64,9 +75,10 @@ test("timeouts cover response bodies, bound GET attempts, and warn about uncerta
   for (const method of ["get", "post", "put"]) {
     const fetch = t.mock.method(globalThis, "fetch", async (_url, { signal }) => ({
       headers: new Headers(),
-      text: () => new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-      }),
+      text: () =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
     }));
     const client = new SwsdClient({ token: "test-token", timeoutMs: 10 });
     await assert.rejects(client[method]("incidents.json"), method === "get" ? /timed out/ : /write may have succeeded/);
@@ -82,14 +94,23 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   const server = new McpServer({ name: "test-swsd", version: "1" });
   registerTools(server, {
     get: (...args) => get(...args),
-    post: async (path, body) => { writes.push({ path, body }); return body; },
-    put: async (path, body) => { writes.push({ path, body }); return body; },
+    post: async (path, body) => {
+      writes.push({ path, body });
+      return body;
+    },
+    put: async (path, body) => {
+      writes.push({ path, body });
+      return body;
+    },
   });
   const client = new Client({ name: "test-client", version: "1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  t.after(async () => { await client.close(); await server.close(); });
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
   const { tools } = await client.listTools();
   assert.equal(tools.length, 22);
 
@@ -100,7 +121,13 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
     assert.deepEqual(update.inputSchema.properties.payload.required, [resource]);
     for (const operation of ["create", "update"]) {
       const name = `swsd_${operation}_${resource}`;
-      for (const payload of [{}, { name: "unwrapped" }, { [resource]: {} }, { [resource]: { name: 42 } }, { [resource]: { name: "test" }, typo: true }]) {
+      for (const payload of [
+        {},
+        { name: "unwrapped" },
+        { [resource]: {} },
+        { [resource]: { name: 42 } },
+        { [resource]: { name: "test" }, typo: true },
+      ]) {
         const before = writes.length;
         assert.equal((await client.callTool({ name, arguments: { id: 1, payload } })).isError, true);
         assert.equal(writes.length, before);
@@ -113,18 +140,28 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
 
     // No matches on a full final page must not imply there are no assigned records.
     get = async () => [{ id: 1, assignee: { id: 99 }, state: "Assigned" }];
-    let result = await client.callTool({ name: `swsd_list_${resource}s`, arguments: {
-      query: { per_page: 1 }, assignee: { id: 42 }, max_pages: 1,
-    } });
+    let result = await client.callTool({
+      name: `swsd_list_${resource}s`,
+      arguments: {
+        query: { per_page: 1 },
+        assignee: { id: 42 },
+        max_pages: 1,
+      },
+    });
     assert.deepEqual(result.structuredContent[`${resource}s`], []);
     assert.equal(result.structuredContent.meta.complete, false);
     assert.equal(result.structuredContent.meta.truncated, true);
     assert.match(result.structuredContent.meta.warning, /incomplete/);
 
-    get = async (_path, query) => query.page === 1 ? [{ id: 1, assignee: { id: 42 } }] : [];
-    result = await client.callTool({ name: `swsd_list_${resource}s`, arguments: {
-      query: { per_page: 1 }, assignee: { id: 42 }, max_pages: 2,
-    } });
+    get = async (_path, query) => (query.page === 1 ? [{ id: 1, assignee: { id: 42 } }] : []);
+    result = await client.callTool({
+      name: `swsd_list_${resource}s`,
+      arguments: {
+        query: { per_page: 1 },
+        assignee: { id: 42 },
+        max_pages: 2,
+      },
+    });
     assert.equal(result.structuredContent.meta.complete, true);
     assert.equal(result.structuredContent.meta.truncated, false);
     assert.equal(result.structuredContent.meta.pages_scanned, 2);
@@ -132,23 +169,37 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   }
 
   // A later exhausted state must not hide an earlier state's capped scan.
-  get = async (_path, query) => query.state === "Assigned" ? [{ id: 1, assignee: { id: 42 } }] : [];
-  const states = await client.callTool({ name: "swsd_list_incidents", arguments: {
-    query: { per_page: 1, state: ["Assigned", "On Hold"] }, assignee: { id: 42 }, max_pages: 1,
-  } });
+  get = async (_path, query) => (query.state === "Assigned" ? [{ id: 1, assignee: { id: 42 } }] : []);
+  const states = await client.callTool({
+    name: "swsd_list_incidents",
+    arguments: {
+      query: { per_page: 1, state: ["Assigned", "On Hold"] },
+      assignee: { id: 42 },
+      max_pages: 1,
+    },
+  });
   assert.equal(states.structuredContent.meta.truncated, true);
   assert.equal(states.structuredContent.meta.pages_scanned, 2);
 
   get = async () => [{ id: 1, state: "Assigned" }];
   for (const resource of ["problems", "changes"]) {
-    const result = await client.callTool({ name: `swsd_list_${resource}`, arguments: {
-      query: { per_page: 1, state: "On Hold" }, max_pages: 1,
-    } });
+    const result = await client.callTool({
+      name: `swsd_list_${resource}`,
+      arguments: {
+        query: { per_page: 1, state: "On Hold" },
+        max_pages: 1,
+      },
+    });
     assert.equal(result.structuredContent.meta.complete, false);
   }
 
-  await client.callTool({ name: "swsd_create_private_incident_comment", arguments: {
-    incident_id: 1, body: "private test", extra_comment_fields: { is_private: false },
-  } });
+  await client.callTool({
+    name: "swsd_create_private_incident_comment",
+    arguments: {
+      incident_id: 1,
+      body: "private test",
+      extra_comment_fields: { is_private: false },
+    },
+  });
   assert.equal(writes.at(-1).body.comment.is_private, true);
 });

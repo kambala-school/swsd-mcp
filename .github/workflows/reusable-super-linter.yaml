@@ -143,7 +143,7 @@ jobs:
           # see issue https://github.com/github/super-linter/issues/1123
           DEFAULT_BRANCH: ${{ env.DEFAULT_BRANCH }}
           # setting this to false means that only changed files will be scanned in each commit
-          VALIDATE_ALL_CODEBASE: ${{ !contains(github.event_name, 'pull_request') }}
+          VALIDATE_ALL_CODEBASE: true # TEMP: full scan to preview main; revert before merge
           # turn off dockerfilelint, as its a dead project
           # https://github.com/replicatedhq/dockerfilelint/issues/169
           # hadolint will still run and is sufficient (no need for two linters)

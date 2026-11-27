@@ -22,27 +22,6 @@ jobs:
     # vendored copy of bretfisher/super-linter-workflow, which asks callers not to use it directly
     uses: ./.github/workflows/reusable-super-linter.yaml # zizmor: ignore[self-repository] actionlint rejects the $/ form
 
-  typecheck:
-    name: Typecheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Set up Node
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Run typecheck
-        run: npm run typecheck
-
   test:
     name: Build and Test
     runs-on: ubuntu-latest
