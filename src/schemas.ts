@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const idSchema = z.union([z.string().min(1), z.number().int().positive()]);
+// SWSD ids are numeric; strings are interpolated into URL paths, so reject anything else (e.g. "../users/5").
+export const idSchema = z.union([z.string().regex(/^\d+$/, "Must be a numeric SWSD id."), z.number().int().positive()]);
 
 const layoutSchema = z
   .enum(["short", "long"])
