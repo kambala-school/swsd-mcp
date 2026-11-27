@@ -116,7 +116,7 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
     await server.close();
   });
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 24);
+  assert.equal(tools.length, 26);
 
   for (const resource of ["incident", "problem", "change"]) {
     const update = tools.find((tool) => tool.name === `swsd_update_${resource}`);
@@ -212,6 +212,14 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   });
   assert.equal(writes.at(-1).body.comment.is_private, true);
   assert.equal(writes.at(-1).body.comment.body, "change note");
+  await client.callTool({
+    name: "swsd_update_private_change_comment",
+    arguments: { change_id: 3, comment_id: 9, body: "edited", extra_comment_fields: { is_private: false } },
+  });
+  assert.deepEqual(writes.at(-1), {
+    path: "changes/3/comments/9.json",
+    body: { comment: { body: "edited", is_private: true } },
+  });
 
   // Ids are interpolated into URL paths, so path traversal and query injection must be rejected.
   const before = writes.length;
@@ -237,6 +245,15 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
             incident_id: id,
             body: "x",
           },
+        })
+      ).isError,
+      true,
+    );
+    assert.equal(
+      (
+        await client.callTool({
+          name: "swsd_update_private_incident_comment",
+          arguments: { incident_id: 1, comment_id: id, body: "x" },
         })
       ).isError,
       true,

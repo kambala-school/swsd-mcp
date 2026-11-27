@@ -265,6 +265,40 @@ function registerCommentTools(server: McpServer, client: SwsdClient, resource: R
       return withToolError(() => client.post(`${path}/${id}/comments.json`, { comment }, query), "comment");
     },
   );
+
+  server.registerTool(
+    `swsd_update_private_${singular}_comment`,
+    {
+      title: `Update Private ${title} Comment`,
+      description: `Update an existing ${singular} comment. The comment is always kept private and hidden from the requester/end user: the tool forces comment.is_private to true. Writes are never automatically retried.`,
+      inputSchema: {
+        ...idField,
+        comment_id: idSchema.describe("Comment id, from the list comments tool."),
+        body: z.string().min(1).describe("New comment body; replaces the existing body."),
+        extra_comment_fields: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Optional extra fields merged into comment. is_private is always overwritten to true."),
+        query: queryParamsSchema,
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (args) => {
+      const { comment_id, body, extra_comment_fields, query } = args;
+      const id = (args as Record<string, unknown>)[idKey] as string | number;
+      const comment = { ...(extra_comment_fields ?? {}), body, is_private: true };
+
+      return withToolError(
+        () => client.put(`${path}/${id}/comments/${comment_id}.json`, { comment }, query),
+        "comment",
+      );
+    },
+  );
 }
 
 interface IncidentListQuery {
