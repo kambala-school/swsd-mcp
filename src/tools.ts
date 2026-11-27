@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { QueryParams } from "./client.js";
-import { SwsdClient } from "./client.js";
+import type { SwsdClient } from "./client.js";
 import {
   getInputSchema,
   idSchema,
@@ -31,7 +31,13 @@ const resources: ResourceConfig[] = [
   { singular: "user", plural: "users", path: "users", title: "User", pluralTitle: "Users" },
   { singular: "category", plural: "categories", path: "categories", title: "Category", pluralTitle: "Categories" },
   { singular: "site", plural: "sites", path: "sites", title: "Site", pluralTitle: "Sites" },
-  { singular: "department", plural: "departments", path: "departments", title: "Department", pluralTitle: "Departments" },
+  {
+    singular: "department",
+    plural: "departments",
+    path: "departments",
+    title: "Department",
+    pluralTitle: "Departments",
+  },
   { singular: "problem", plural: "problems", path: "problems", title: "Problem", pluralTitle: "Problems" },
   { singular: "change", plural: "changes", path: "changes", title: "Change Request", pluralTitle: "Change Requests" },
 ];
@@ -130,8 +136,7 @@ function registerWorkItemListTool(server: McpServer, client: SwsdClient, resourc
     `swsd_list_${resource.plural}`,
     {
       title: `List ${resource.pluralTitle}`,
-      description:
-        `List SolarWinds Service Desk ${resource.plural}. For assigned-to queries, use the explicit assignee filter; SWSD silently ignores raw assignee_id/assignee query parameters. Local scans report meta.complete and meta.truncated; never treat incomplete results as exhaustive. Without filters, returns one page.`,
+      description: `List SolarWinds Service Desk ${resource.plural}. For assigned-to queries, use the explicit assignee filter; SWSD silently ignores raw assignee_id/assignee query parameters. Local scans report meta.complete and meta.truncated; never treat incomplete results as exhaustive. Without filters, returns one page.`,
       inputSchema: workItemListInputSchema,
       annotations: {
         readOnlyHint: true,
@@ -203,8 +208,7 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
         openWorldHint: true,
       },
     },
-    async ({ incident_id }) =>
-      withToolError(() => client.get(`incidents/${incident_id}/comments.json`), "comments"),
+    async ({ incident_id }) => withToolError(() => client.get(`incidents/${incident_id}/comments.json`), "comments"),
   );
 
   server.registerTool(
@@ -216,7 +220,9 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
       inputSchema: {
         incident_id: idSchema.describe("Incident id or number."),
         body: z.string().min(1).describe("Comment body."),
-        user_id: idSchema.optional().describe("Optional SWSD user id to attribute the comment to, if your account/API allows it."),
+        user_id: idSchema
+          .optional()
+          .describe("Optional SWSD user id to attribute the comment to, if your account/API allows it."),
         extra_comment_fields: z
           .record(z.string(), z.unknown())
           .optional()
@@ -238,10 +244,7 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
         is_private: true,
       };
 
-      return withToolError(
-        () => client.post(`incidents/${incident_id}/comments.json`, { comment }, query),
-        "comment",
-      );
+      return withToolError(() => client.post(`incidents/${incident_id}/comments.json`, { comment }, query), "comment");
     },
   );
 }
@@ -289,7 +292,8 @@ async function listIncidents(
         meta: {
           mode: "server",
           server_query: serverQuery,
-          warning: "Only documented/supported incident query fields are accepted. Use assignee for exact assigned-to filtering.",
+          warning:
+            "Only documented/supported incident query fields are accepted. Use assignee for exact assigned-to filtering.",
         },
       };
     }
@@ -343,7 +347,12 @@ async function listIncidents(
       max_pages: scanLimit,
       complete: !truncated,
       truncated,
-      ...(truncated ? { warning: "Scan limit reached; results may be incomplete. Narrow the query or increase max_pages before drawing exhaustive conclusions." } : {}),
+      ...(truncated
+        ? {
+            warning:
+              "Scan limit reached; results may be incomplete. Narrow the query or increase max_pages before drawing exhaustive conclusions.",
+          }
+        : {}),
       per_page: pageSize,
       note: "SWSD ignores raw assignee_id/assignee query parameters for incidents, so this tool filters exact assignee matches from paged API results.",
     },
@@ -368,7 +377,8 @@ async function listWorkItems(
       meta: {
         mode: "server",
         server_query: serverQuery,
-        warning: "Only documented/supported list query fields are accepted. Use assignee for exact assigned-to filtering.",
+        warning:
+          "Only documented/supported list query fields are accepted. Use assignee for exact assigned-to filtering.",
       },
     };
   }
@@ -385,7 +395,11 @@ async function listWorkItems(
     const items = await client.get<unknown[]>(`${resource.path}.json`, serverQuery);
     pagesScanned += 1;
     scanned += items.length;
-    matched.push(...items.filter((item) => matchesState(item, states) && (assignee === undefined || matchesAssignee(item, assignee))));
+    matched.push(
+      ...items.filter(
+        (item) => matchesState(item, states) && (assignee === undefined || matchesAssignee(item, assignee)),
+      ),
+    );
 
     if (items.length < pageSize) {
       break;
@@ -407,7 +421,12 @@ async function listWorkItems(
       max_pages: scanLimit,
       complete: !truncated,
       truncated,
-      ...(truncated ? { warning: "Scan limit reached; results may be incomplete. Narrow the query or increase max_pages before drawing exhaustive conclusions." } : {}),
+      ...(truncated
+        ? {
+            warning:
+              "Scan limit reached; results may be incomplete. Narrow the query or increase max_pages before drawing exhaustive conclusions.",
+          }
+        : {}),
       per_page: pageSize,
       note: "SWSD ignores raw assignee_id/assignee query parameters for this endpoint, so this tool filters exact matches from paged API results.",
     },
@@ -423,7 +442,7 @@ async function listIncidentsForStates(
 ): Promise<unknown[]> {
   const all: unknown[] = [];
   for (const state of states) {
-    all.push(...await client.get<unknown[]>("incidents.json", buildIncidentServerQuery(query, state, page, perPage)));
+    all.push(...(await client.get<unknown[]>("incidents.json", buildIncidentServerQuery(query, state, page, perPage))));
   }
   return all;
 }
@@ -502,7 +521,7 @@ async function withToolError(
   keyOrValue: string | Promise<unknown>,
 ): Promise<ToolHandlerResult> {
   const load = typeof loadOrKey === "function" ? loadOrKey : () => keyOrValue as Promise<unknown>;
-  const key = typeof loadOrKey === "string" ? loadOrKey : keyOrValue as string;
+  const key = typeof loadOrKey === "string" ? loadOrKey : (keyOrValue as string);
 
   try {
     return asToolResult(key, await load());
