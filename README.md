@@ -35,8 +35,10 @@ Interactive architecture and sequence diagrams (open the HTML files in a browser
 - `swsd_get_change`
 - `swsd_create_change`
 - `swsd_update_change`
+- `swsd_list_change_comments`
+- `swsd_create_private_change_comment`
 
-Comments created through `swsd_create_private_incident_comment` always send `comment.is_private: true`, even if `extra_comment_fields` contains a different value.
+Comments created through `swsd_create_private_incident_comment` and `swsd_create_private_change_comment` always send `comment.is_private: true`, even if `extra_comment_fields` contains a different value.
 
 ## Configuration
 

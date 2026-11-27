@@ -116,7 +116,7 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
     await server.close();
   });
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 22);
+  assert.equal(tools.length, 24);
 
   for (const resource of ["incident", "problem", "change"]) {
     const update = tools.find((tool) => tool.name === `swsd_update_${resource}`);
@@ -206,6 +206,12 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
     },
   });
   assert.equal(writes.at(-1).body.comment.is_private, true);
+  await client.callTool({
+    name: "swsd_create_private_change_comment",
+    arguments: { change_id: 3, body: "change note", extra_comment_fields: { is_private: false } },
+  });
+  assert.equal(writes.at(-1).body.comment.is_private, true);
+  assert.equal(writes.at(-1).body.comment.body, "change note");
 
   // Ids are interpolated into URL paths, so path traversal and query injection must be rejected.
   const before = writes.length;
@@ -252,6 +258,8 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   assert.deepEqual(seen, { path: "incidents/1/comments.json", query: { page: 2 } });
   assert.deepEqual(comments.structuredContent.comments, [{ id: 7 }]);
   assert.equal(comments.structuredContent.meta.pagination.page, 2);
+  await client.callTool({ name: "swsd_list_change_comments", arguments: { change_id: 3 } });
+  assert.equal(seen.path, "changes/3/comments.json");
   const users = await client.callTool({ name: "swsd_list_users", arguments: {} });
   assert.deepEqual(users.structuredContent.users, [{ id: 7 }]);
   assert.ok("pagination" in users.structuredContent.meta);
