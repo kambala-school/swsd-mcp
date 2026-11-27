@@ -202,4 +202,36 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
     },
   });
   assert.equal(writes.at(-1).body.comment.is_private, true);
+
+  // Ids are interpolated into URL paths, so path traversal and query injection must be rejected.
+  const before = writes.length;
+  for (const id of ["../users/5", "1.json?x=", "1/../2", ""]) {
+    assert.equal((await client.callTool({ name: "swsd_get_incident", arguments: { id } })).isError, true);
+    assert.equal(
+      (
+        await client.callTool({
+          name: "swsd_update_incident",
+          arguments: {
+            id,
+            payload: { incident: { name: "test" } },
+          },
+        })
+      ).isError,
+      true,
+    );
+    assert.equal(
+      (
+        await client.callTool({
+          name: "swsd_create_private_incident_comment",
+          arguments: {
+            incident_id: id,
+            body: "x",
+          },
+        })
+      ).isError,
+      true,
+    );
+  }
+  assert.equal(writes.length, before);
+  assert.notEqual((await client.callTool({ name: "swsd_get_incident", arguments: { id: "123" } })).isError, true);
 });
