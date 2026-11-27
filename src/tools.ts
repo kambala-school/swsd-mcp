@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { QueryParams } from "./client.js";
+import type { Pagination, QueryParams } from "./client.js";
 import type { SwsdClient } from "./client.js";
 import {
   getInputSchema,
@@ -74,7 +74,7 @@ function registerListTool(server: McpServer, client: SwsdClient, resource: Resou
     `swsd_list_${resource.plural}`,
     {
       title: `List ${resource.pluralTitle}`,
-      description: `List SolarWinds Service Desk ${resource.plural}. Pass query fields as raw SWSD query parameters.`,
+      description: `List SolarWinds Service Desk ${resource.plural}. Pass query fields as raw SWSD query parameters. Check meta.pagination.has_more and request the next page before treating results as complete.`,
       inputSchema: listInputSchema,
       annotations: {
         readOnlyHint: true,
@@ -83,7 +83,11 @@ function registerListTool(server: McpServer, client: SwsdClient, resource: Resou
         openWorldHint: true,
       },
     },
-    async ({ query }) => withToolError(() => client.get(`${resource.path}.json`, query), resource.plural),
+    async ({ query }) =>
+      withToolError(async () => {
+        const { items, pagination } = await client.getPage(`${resource.path}.json`, query);
+        return { [resource.plural]: items, meta: { pagination } };
+      }, resource.plural),
   );
 }
 
@@ -197,9 +201,11 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
     "swsd_list_incident_comments",
     {
       title: "List Incident Comments",
-      description: "List comments for a SolarWinds Service Desk incident.",
+      description:
+        "List comments for a SolarWinds Service Desk incident. Results are paged; check meta.pagination.has_more and request the next page before treating the thread as complete.",
       inputSchema: {
         incident_id: idSchema.describe("Incident id or number."),
+        query: queryParamsSchema,
       },
       annotations: {
         readOnlyHint: true,
@@ -208,7 +214,11 @@ function registerIncidentCommentTools(server: McpServer, client: SwsdClient): vo
         openWorldHint: true,
       },
     },
-    async ({ incident_id }) => withToolError(() => client.get(`incidents/${incident_id}/comments.json`), "comments"),
+    async ({ incident_id, query }) =>
+      withToolError(async () => {
+        const { items, pagination } = await client.getPage(`incidents/${incident_id}/comments.json`, query);
+        return { comments: items, meta: { pagination } };
+      }, "comments"),
   );
 
   server.registerTool(
@@ -286,24 +296,32 @@ async function listIncidents(
     const states = normalizeStates(query?.state);
     if (states.length <= 1) {
       const serverQuery = buildIncidentServerQuery(query, states[0], query?.page, query?.per_page);
-      const incidents = await client.get<unknown[]>("incidents.json", serverQuery);
+      const { items: incidents, pagination } = await client.getPage("incidents.json", serverQuery);
       return {
         incidents,
         meta: {
           mode: "server",
           server_query: serverQuery,
+          pagination,
           warning:
             "Only documented/supported incident query fields are accepted. Use assignee for exact assigned-to filtering.",
         },
       };
     }
 
-    const incidents = await listIncidentsForStates(client, query, states, query?.page ?? 1, query?.per_page ?? 100);
+    const { incidents, pagination } = await listIncidentsForStates(
+      client,
+      query,
+      states,
+      query?.page ?? 1,
+      query?.per_page ?? 100,
+    );
     return {
       incidents,
       meta: {
         mode: "server_multi_state",
         states,
+        pagination,
         page: query?.page ?? 1,
         per_page: query?.per_page ?? 100,
       },
@@ -371,12 +389,13 @@ async function listWorkItems(
 
   if (!needsLocalFilter) {
     const serverQuery = buildWorkItemServerQuery(query, query?.page, query?.per_page);
-    const items = await client.get<unknown[]>(`${resource.path}.json`, serverQuery);
+    const { items, pagination } = await client.getPage(`${resource.path}.json`, serverQuery);
     return {
       items,
       meta: {
         mode: "server",
         server_query: serverQuery,
+        pagination,
         warning:
           "Only documented/supported list query fields are accepted. Use assignee for exact assigned-to filtering.",
       },
@@ -439,12 +458,15 @@ async function listIncidentsForStates(
   states: string[],
   page: number,
   perPage: number,
-): Promise<unknown[]> {
-  const all: unknown[] = [];
+): Promise<{ incidents: unknown[]; pagination: Record<string, Pagination> }> {
+  const incidents: unknown[] = [];
+  const pagination: Record<string, Pagination> = {};
   for (const state of states) {
-    all.push(...(await client.get<unknown[]>("incidents.json", buildIncidentServerQuery(query, state, page, perPage))));
+    const result = await client.getPage("incidents.json", buildIncidentServerQuery(query, state, page, perPage));
+    incidents.push(...result.items);
+    pagination[state] = result.pagination;
   }
-  return all;
+  return { incidents, pagination };
 }
 
 function buildIncidentServerQuery(
@@ -535,14 +557,8 @@ async function withToolError(
 }
 
 function asToolResult(key: string, value: unknown): ToolHandlerResult {
-  if (key === "incidents" && isRecord(value) && Array.isArray(value.incidents)) {
-    return {
-      content: [{ type: "text", text: JSON.stringify(value) }],
-      structuredContent: value,
-    };
-  }
-
-  if ((key === "problems" || key === "changes") && isRecord(value) && Array.isArray(value[key])) {
+  // List tools already return { [key]: items, meta }; pass them through rather than nesting.
+  if (isRecord(value) && Array.isArray(value[key])) {
     return {
       content: [{ type: "text", text: JSON.stringify(value) }],
       structuredContent: value,

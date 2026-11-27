@@ -4,6 +4,14 @@ export type SwsdMethod = "GET" | "POST" | "PUT";
 
 export type QueryParams = Record<string, string | number | boolean | undefined>;
 
+export interface Pagination {
+  page: number;
+  total_count: number | null;
+  total_pages: number | null;
+  /** null means unknown: the API sent no X-Total-Pages header. */
+  has_more: boolean | null;
+}
+
 export interface SwsdClientOptions {
   baseUrl?: string;
   token?: string;
@@ -48,6 +56,14 @@ export class SwsdClient {
     path: string,
     options: { query?: QueryParams; body?: unknown } = {},
   ): Promise<T> {
+    return (await this.send<T>(method, path, options)).body;
+  }
+
+  private async send<T>(
+    method: SwsdMethod,
+    path: string,
+    options: { query?: QueryParams; body?: unknown },
+  ): Promise<{ body: T; headers: Headers }> {
     if (!this.token) {
       throw new Error(
         "SOLARWINDS_SERVICE_DESK_TOKEN is not set. Create an API token in SolarWinds Service Desk and pass it as an environment variable.",
@@ -82,7 +98,7 @@ export class SwsdClient {
           );
         }
 
-        return responseBody as T;
+        return { body: responseBody as T, headers: response.headers };
       } catch (error) {
         const retryable =
           error instanceof SwsdApiError
@@ -113,6 +129,26 @@ export class SwsdClient {
 
   get<T = unknown>(path: string, query?: QueryParams): Promise<T> {
     return this.request<T>("GET", path, { query });
+  }
+
+  /** GET a list page plus SWSD's pagination headers (null when the API omits them). */
+  async getPage<T = unknown>(path: string, query?: QueryParams): Promise<{ items: T[]; pagination: Pagination }> {
+    const { body, headers } = await this.send<T[]>("GET", path, { query });
+    const header = (name: string) => {
+      const value = Number(headers.get(name) ?? NaN);
+      return Number.isSafeInteger(value) ? value : null;
+    };
+    const page = header("x-current-page") ?? Number(query?.page ?? 1);
+    const totalPages = header("x-total-pages");
+    return {
+      items: body,
+      pagination: {
+        page,
+        total_count: header("x-total-count"),
+        total_pages: totalPages,
+        has_more: totalPages === null ? null : page < totalPages,
+      },
+    };
   }
 
   post<T = unknown>(path: string, body: unknown, query?: QueryParams): Promise<T> {
