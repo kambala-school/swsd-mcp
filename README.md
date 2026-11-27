@@ -60,7 +60,7 @@ SOLARWINDS_SERVICE_DESK_TOKEN="your-api-token"
 SOLARWINDS_SERVICE_DESK_BASE_URL="https://api.samanage.com"
 ```
 
-`.env` and `.env.*` are git ignored. Keep real API tokens out of committed files.
+`.env` and `.env.*` are Git ignored. Keep real API tokens out of committed files.
 
 Regional base URLs commonly include:
 
@@ -210,7 +210,8 @@ List incidents, problems, or changes directly assigned to a user:
 
 When `assignee` is provided, the tool pages through SWSD results and filters exact matches against the resource's `assignee.id`, `assignee.name`, or `assignee.email`. Problems and changes also scan locally when a state filter is supplied. Local scans start at page 1; `query.page` applies only when no local filtering is used.
 
-Local scan responses include `meta.pages_scanned`, `meta.records_scanned`, `meta.complete`, and `meta.truncated`. A full final page at the scan limit means `complete: false`, `truncated: true`, and an explicit warning—even if no matching records were found. This conservatively means more records may exist, not that omitted matches are known to exist. `complete: true` means the scan reached a short or empty page for each requested state; it does not guarantee a snapshot if records change during pagination.
+Local scan responses include `meta.pages_scanned`, `meta.records_scanned`, `meta.complete`, and `meta.truncated`. A full final page at the scan limit means `complete: false`, `truncated: true`, and an explicit warning—even if no matching records were found.
+This conservatively means more records may exist, not that omitted matches are known to exist. `complete: true` means the scan reached a short or empty page for each requested state; it does not guarantee a snapshot if records change during pagination.
 
 The default scan limit is 20 pages, configurable up to 50 with `max_pages`. For incidents, that limit applies separately to each requested state. Narrow the query or increase the limit before drawing exhaustive conclusions from a capped scan. Unfiltered lists return one page; incident lists with multiple states and no assignee return one page per state.
 

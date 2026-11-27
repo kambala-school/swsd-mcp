@@ -2,6 +2,13 @@ import { z } from "zod";
 
 export const idSchema = z.union([z.string().min(1), z.number().int().positive()]);
 
+const layoutSchema = z
+  .enum(["short", "long"])
+  .optional()
+  .describe("SWSD response layout. Omit to use the API default.");
+
+const statesSchema = z.union([z.string(), z.array(z.string()).min(1)]);
+
 export const queryParamsSchema = z
   .object({
     page: z.number().int().positive().optional().describe("Page number for paginated endpoints."),
@@ -32,9 +39,8 @@ export const incidentListInputSchema = {
         .max(100)
         .optional()
         .describe("Results per page. Defaults to 100 when local assignee filtering is used."),
-      layout: z.enum(["short", "long"]).optional().describe("SWSD response layout. Omit to use the API default."),
-      state: z
-        .union([z.string(), z.array(z.string()).min(1)])
+      layout: layoutSchema,
+      state: statesSchema
         .optional()
         .describe("Incident state or states, for example 'Assigned' or ['Assigned', 'On Hold']."),
       updated: z.string().optional().describe("Updated filter supported by SWSD, for example '7h', '30', or '365'."),
@@ -89,9 +95,8 @@ export const workItemListInputSchema = {
         .max(100)
         .optional()
         .describe("Results per page. Defaults to 100 when local filtering is used."),
-      layout: z.enum(["short", "long"]).optional().describe("SWSD response layout. Omit to use the API default."),
-      state: z
-        .union([z.string(), z.array(z.string()).min(1)])
+      layout: layoutSchema,
+      state: statesSchema
         .optional()
         .describe("Problem/change state or states. When provided, this tool filters exact state matches locally."),
     })
