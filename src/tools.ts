@@ -537,20 +537,20 @@ async function withToolError(
 function asToolResult(key: string, value: unknown): ToolHandlerResult {
   if (key === "incidents" && isRecord(value) && Array.isArray(value.incidents)) {
     return {
-      content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(value) }],
       structuredContent: value,
     };
   }
 
   if ((key === "problems" || key === "changes") && isRecord(value) && Array.isArray(value[key])) {
     return {
-      content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+      content: [{ type: "text", text: JSON.stringify(value) }],
       structuredContent: value,
     };
   }
 
   return {
-    content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(value) }],
     structuredContent: { [key]: value },
   };
 }
