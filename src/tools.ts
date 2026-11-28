@@ -44,6 +44,8 @@ const resources: ResourceConfig[] = [
 
 const writeResources = new Set(["incident", "problem", "change"]);
 const commentResources = new Set(["incident", "change"]);
+// SWSD only honours is_private on incident comments; change comments are always visible.
+const privateCommentResources = new Set(["incident"]);
 
 export function registerTools(server: McpServer, client: SwsdClient): void {
   for (const resource of resources) {
@@ -203,6 +205,15 @@ function registerCommentTools(server: McpServer, client: SwsdClient, resource: R
   const { singular, path, title } = resource;
   const idKey = `${singular}_id`;
   const idField = { [idKey]: idSchema.describe(`${title} id or number.`) };
+  const isPrivate = privateCommentResources.has(singular);
+  const privacy = isPrivate ? "private_" : "";
+  const privacyTitle = isPrivate ? "Private " : "";
+  const privacyNote = isPrivate
+    ? "The comment is always private and hidden from the requester/end user: the tool forces comment.is_private to true."
+    : `SWSD does not support private ${singular} comments: the comment is visible to anyone who can see the ${singular}, including the requester. Any is_private value is dropped.`;
+  const extraFieldsNote = isPrivate
+    ? "Optional extra fields merged into comment. is_private is always overwritten to true."
+    : "Optional extra fields merged into comment. is_private is dropped because it is not supported here.";
   server.registerTool(
     `swsd_list_${singular}_comments`,
     {
@@ -229,20 +240,17 @@ function registerCommentTools(server: McpServer, client: SwsdClient, resource: R
   );
 
   server.registerTool(
-    `swsd_create_private_${singular}_comment`,
+    `swsd_create_${privacy}${singular}_comment`,
     {
-      title: `Create Private ${title} Comment`,
-      description: `Create a ${singular} comment that is always private and hidden from the requester/end user. The tool forces comment.is_private to true.`,
+      title: `Create ${privacyTitle}${title} Comment`,
+      description: `Create a ${singular} comment. ${privacyNote}`,
       inputSchema: {
         ...idField,
         body: z.string().min(1).describe("Comment body."),
         user_id: idSchema
           .optional()
           .describe("Optional SWSD user id to attribute the comment to, if your account/API allows it."),
-        extra_comment_fields: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Optional extra fields merged into comment. is_private is always overwritten to true."),
+        extra_comment_fields: z.record(z.string(), z.unknown()).optional().describe(extraFieldsNote),
         query: queryParamsSchema,
       },
       annotations: {
@@ -256,10 +264,9 @@ function registerCommentTools(server: McpServer, client: SwsdClient, resource: R
       const { body, user_id, extra_comment_fields, query } = args;
       const id = (args as Record<string, unknown>)[idKey] as string | number;
       const comment = {
-        ...(extra_comment_fields ?? {}),
+        ...commentFields(extra_comment_fields, isPrivate),
         body,
         ...(user_id === undefined ? {} : { user_id }),
-        is_private: true,
       };
 
       return withToolError(() => client.post(`${path}/${id}/comments.json`, { comment }, query), "comment");
@@ -267,18 +274,15 @@ function registerCommentTools(server: McpServer, client: SwsdClient, resource: R
   );
 
   server.registerTool(
-    `swsd_update_private_${singular}_comment`,
+    `swsd_update_${privacy}${singular}_comment`,
     {
-      title: `Update Private ${title} Comment`,
-      description: `Update an existing ${singular} comment. The comment is always kept private and hidden from the requester/end user: the tool forces comment.is_private to true. Writes are never automatically retried.`,
+      title: `Update ${privacyTitle}${title} Comment`,
+      description: `Update an existing ${singular} comment. ${privacyNote} Writes are never automatically retried.`,
       inputSchema: {
         ...idField,
         comment_id: idSchema.describe("Comment id, from the list comments tool."),
         body: z.string().min(1).describe("New comment body; replaces the existing body."),
-        extra_comment_fields: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Optional extra fields merged into comment. is_private is always overwritten to true."),
+        extra_comment_fields: z.record(z.string(), z.unknown()).optional().describe(extraFieldsNote),
         query: queryParamsSchema,
       },
       annotations: {
@@ -291,7 +295,7 @@ function registerCommentTools(server: McpServer, client: SwsdClient, resource: R
     async (args) => {
       const { comment_id, body, extra_comment_fields, query } = args;
       const id = (args as Record<string, unknown>)[idKey] as string | number;
-      const comment = { ...(extra_comment_fields ?? {}), body, is_private: true };
+      const comment = { ...commentFields(extra_comment_fields, isPrivate), body };
 
       return withToolError(
         () => client.put(`${path}/${id}/comments/${comment_id}.json`, { comment }, query),
@@ -299,6 +303,12 @@ function registerCommentTools(server: McpServer, client: SwsdClient, resource: R
       );
     },
   );
+}
+
+function commentFields(extra: Record<string, unknown> | undefined, isPrivate: boolean): Record<string, unknown> {
+  const fields = { ...extra };
+  delete fields.is_private;
+  return isPrivate ? { ...fields, is_private: true } : fields;
 }
 
 interface IncidentListQuery {
