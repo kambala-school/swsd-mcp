@@ -37,10 +37,12 @@ Interactive architecture and sequence diagrams (open the HTML files in a browser
 - `swsd_create_change`
 - `swsd_update_change`
 - `swsd_list_change_comments`
-- `swsd_create_private_change_comment`
-- `swsd_update_private_change_comment`
+- `swsd_create_change_comment`
+- `swsd_update_change_comment`
 
-Comments created or updated through the `swsd_create_private_*_comment` and `swsd_update_private_*_comment` tools always send `comment.is_private: true`, even if `extra_comment_fields` contains a different value.
+Incident comments created or updated through `swsd_create_private_incident_comment` and `swsd_update_private_incident_comment` always send `comment.is_private: true`, even if `extra_comment_fields` contains a different value.
+
+SWSD does not support private comments on changes. Change comments are visible to anyone who can see the change, including the requester, and `swsd_create_change_comment` / `swsd_update_change_comment` drop any `is_private` value.
 
 ## Configuration
 

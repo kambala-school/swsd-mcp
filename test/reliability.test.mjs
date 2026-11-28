@@ -117,6 +117,8 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   });
   const { tools } = await client.listTools();
   assert.equal(tools.length, 26);
+  const changeComment = tools.find((tool) => tool.name === "swsd_create_change_comment");
+  assert.match(changeComment.description, /does not support private/);
 
   for (const resource of ["incident", "problem", "change"]) {
     const update = tools.find((tool) => tool.name === `swsd_update_${resource}`);
@@ -207,18 +209,19 @@ test("MCP exposes safe write schemas and explicit scan completeness across resou
   });
   assert.equal(writes.at(-1).body.comment.is_private, true);
   await client.callTool({
-    name: "swsd_create_private_change_comment",
-    arguments: { change_id: 3, body: "change note", extra_comment_fields: { is_private: false } },
+    name: "swsd_create_change_comment",
+    arguments: { change_id: 3, body: "change note", extra_comment_fields: { is_private: true } },
   });
-  assert.equal(writes.at(-1).body.comment.is_private, true);
+  // SWSD has no private change comments, so is_private must never be sent.
+  assert.equal("is_private" in writes.at(-1).body.comment, false);
   assert.equal(writes.at(-1).body.comment.body, "change note");
   await client.callTool({
-    name: "swsd_update_private_change_comment",
-    arguments: { change_id: 3, comment_id: 9, body: "edited", extra_comment_fields: { is_private: false } },
+    name: "swsd_update_change_comment",
+    arguments: { change_id: 3, comment_id: 9, body: "edited", extra_comment_fields: { is_private: true } },
   });
   assert.deepEqual(writes.at(-1), {
     path: "changes/3/comments/9.json",
-    body: { comment: { body: "edited", is_private: true } },
+    body: { comment: { body: "edited" } },
   });
 
   // Ids are interpolated into URL paths, so path traversal and query injection must be rejected.
